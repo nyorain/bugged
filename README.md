@@ -10,6 +10,7 @@ Released into the public domain to spare you from any additional license headach
 Does not perform any macro and template magic that itself provides a nice habitat for those
 little beasts. Does only what it has to. And this well.
 You don't need any magic to exterminate bugs.
+(Requires C++11 though since it got way better flamethrowers than the old and boring stuff).
 
 __Use these 3 weapons instead:__
 
