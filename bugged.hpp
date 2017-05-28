@@ -128,12 +128,6 @@ public:
 	/// Tests all registered units.
 	static inline unsigned int run();
 
-	/// Tests the given function for exception E.
-	/// Returns true if E is thrown, or sets the given string
-	/// to a string representing the alternative exception, if any.
-	template<typename E, typename F>
-	static bool errorTest(const F& func, std::string& alternativeMsg);
-
 	/// Outputs a separation line.
 	static void separationLine();
 
@@ -172,7 +166,7 @@ protected:
 /// evaluated.
 #define ERROR(expr, error) { \
 	std::string TEST_altMsg {}; \
-	if(!bugged::Testing::errorTest<error>([&]{ expr; }, TEST_altMsg)) \
+	if(!bugged::detail::ErrorTest<error>::call([&]{ expr; }, TEST_altMsg)) \
 			bugged::Testing::errorFailed({__LINE__, __FILE__}, #error, TEST_altMsg.c_str()); \
 	}
 
@@ -233,18 +227,15 @@ void Testing::errorFailed(const FailInfo& info, const char* error, const char* o
 	++currentFailed;
 }
 
-template<typename E, typename F>
-bool Testing::errorTest(const F& func, std::string& msg)
-{
-	if(std::is_same<E, std::exception>::value) {
-		try{
-			func();
-		} catch(const E&) {
-			return true;
-		} catch(...) {
-			msg = "<Not a std::exception>";
-		}
-	} else {
+namespace detail {
+
+/// Tries to catch an error of the given type in the given function.
+/// Specialization needed to surpress warnings when E == std::exception.
+template<typename E>
+struct ErrorTest {
+	template<typename F>
+	static bool call(const F& func, std::string& msg)
+	{
 		try{
 			func();
 		} catch(const E&) {
@@ -255,9 +246,26 @@ bool Testing::errorTest(const F& func, std::string& msg)
 		} catch(...) {
 			msg = "<Not a std::exception>";
 		}
+		return false;
 	}
+};
 
-	return false;
+template<>
+struct ErrorTest<std::exception> {
+	template<typename F>
+	static bool call(const F& func, std::string& msg)
+	{
+		try {
+			func();
+		} catch(const std::exception&) {
+			return true;
+		} catch(...) {
+			msg = "<Not a std::exception>";
+		}
+		return false;
+	}
+};
+
 }
 
 int Testing::add(const Unit& unit)
