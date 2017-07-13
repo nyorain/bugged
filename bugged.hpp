@@ -135,12 +135,6 @@ public:
 	/// Returns the number of units failed.
 	static inline unsigned int run();
 
-	/// Tests the given function for exception E.
-	/// Returns true if E is thrown, or sets the given string
-	/// to a string representing the alternative exception, if any.
-	template<typename E, typename F>
-	static bool errorTest(const F& func, std::string& alternativeMsg);
-
 	/// Outputs a separation line.
 	static void separationLine(bool beginning);
 
@@ -167,21 +161,16 @@ protected:
 	static void BUGGED_##name##_U()
 
 /// Expects the two given values to be equal.
-#define EXPECT(expr, expected) { \
-	auto&& BUGGED_exprValue = expr; \
-	auto&& BUGGED_expectedValue = expected; \
-	if(BUGGED_exprValue != BUGGED_expectedValue) \
-		bugged::Testing::expectFailed({__LINE__, ::bugged::stripPath(__FILE__)}, \
-			BUGGED_exprValue, BUGGED_expectedValue); \
-	}
+#define EXPECT(expr, expected) \
+	{ bugged::checkExpect({__LINE__, ::bugged::stripPath(__FILE__)}, expr, expected); }
 
 /// Expects the given expression to throw an error of the given type when
 /// evaluated.
 #define ERROR(expr, error) { \
-	std::string BUGGED_altMsg {}; \
-	if(!bugged::Testing::errorTest<error>([&]{ expr; }, BUGGED_altMsg)) \
-			bugged::Testing::errorFailed({__LINE__, bugged::stripPath(__FILE__)}, \
-				#error, BUGGED_altMsg); \
+	std::string TEST_altMsg {}; \
+	if(!bugged::detail::ErrorTest<error>::call([&]{ expr; }, TEST_altMsg)) \
+			bugged::Testing::errorFailed({__LINE__, ::bugged::stripPath(__FILE__)}, \
+			 	#error, TEST_altMsg.c_str()); \
 	}
 
 // Implementation
@@ -197,6 +186,15 @@ unsigned int Testing::currentFailed {};
 unsigned int Testing::totalFailed {};
 const char* Testing::currentTest {};
 std::ostream* Testing::output = &std::cout;
+
+// Utility method used by EXPECT to assure the given expressions are evaluated
+// exactly once
+template<typename V, typename E>
+void checkExpect(const Testing::FailInfo& info, const V& value, const E& expected)
+{
+	if(value != expected)
+		Testing::expectFailed(info, value, expected);
+}
 
 void Testing::separationLine(bool beginning)
 {
@@ -231,7 +229,7 @@ void Testing::errorFailed(const FailInfo& info, const char* error, const std::st
 
 	if(!other.empty()) {
 		std::cout << "got other error: \n";
-		std::cout << other << "\n";
+		std::cout << "    " << other << "\n";
 	} else {
 		std::cout << "no error was thrown\n";
 	}
@@ -239,18 +237,15 @@ void Testing::errorFailed(const FailInfo& info, const char* error, const std::st
 	++currentFailed;
 }
 
-template<typename E, typename F>
-bool Testing::errorTest(const F& func, std::string& msg)
-{
-	if(std::is_same<E, std::exception>::value) {
-		try {
-			func();
-		} catch(const E&) {
-			return true;
-		} catch(...) {
-			msg = "<Not a std::exception>";
-		}
-	} else {
+namespace detail {
+
+/// Tries to catch an error of the given type in the given function.
+/// Specialization needed to surpress warnings when E == std::exception.
+template<typename E>
+struct ErrorTest {
+	template<typename F>
+	static bool call(const F& func, std::string& msg)
+	{
 		try {
 			func();
 		} catch(const E&) {
@@ -261,10 +256,29 @@ bool Testing::errorTest(const F& func, std::string& msg)
 		} catch(...) {
 			msg = "<Not a std::exception>";
 		}
-	}
 
-	return false;
-}
+		return false;
+	}
+};
+
+template<>
+struct ErrorTest<std::exception> {
+	template<typename F>
+	static bool call(const F& func, std::string& msg)
+	{
+		try {
+			func();
+		} catch(const std::exception&) {
+			return true;
+		} catch(...) {
+			msg = "<Not a std::exception>";
+		}
+
+		return false;
+	}
+};
+
+} // namespace detail
 
 int Testing::add(const Unit& unit)
 {
@@ -285,7 +299,7 @@ unsigned int Testing::run()
 			unit.func();
 		} catch(const std::exception& exception) {
 			thrown = true;
-			unexpectedException(std::string("std::exception::what(): ") + exception.what());
+			unexpectedException(std::string("std::exception: ") + exception.what());
 		} catch(...) {
 			thrown = true;
 			unexpectedException("<Not a std::exception object>");
@@ -323,7 +337,7 @@ void Testing::unexpectedException(const std::string& errorString)
 	separationLine(true);
 
 	std::cout << "[" << currentTest << "]: " << "Unexpected error: \n"
-		   	  << errorString << "\n";
+		   	  << "    " << errorString << "\n";
 }
 
 } // namespace bugged
