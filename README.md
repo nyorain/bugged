@@ -34,6 +34,7 @@ TEST(FirstTest) {
 	EXPECT(returns0(), 0); // will succeed
 	EXPECT(returns0(), 1); // will fail
 
+	ERROR(returns0(), int); // will fail
 	ERROR(throws(), std::logic_error); // will succeed
 	ERROR(throws(), std::runtime_error); // will fail
 
@@ -44,26 +45,23 @@ TEST(FirstTest) {
 TEST(EmptyTest) {}
 ```
 
-The output of the test above could look like this. It might actually vary a bit with the
-latest version adapted to their newest mutations):
-```
-FirstTest: 3 tests failed, unexpected exception thrown!
-    --------------------------------------------------
-    Check expect failed in test FirstTest
-    example.cpp:10
-    Expected 1, got 0
-    --------------------------------------------------
-    Check error failed in test FirstTest
-    example.cpp:13
-    Expected Error std::runtime_error, other error was thrown instead:
-        std::exception: Go Away!
-    --------------------------------------------------
-    Unexpected error in test FirstTest:
-    std::exception::what(): Go Away!
-    --------------------------------------------------
+The output of the test above could look like this:
 
-EmptyTest: All tests succeeded
-Total: 3 tests failed
+```
+[example.cpp:10 | FirstTest]: Check expect failed:
+Expected '1', got '0'
+----------------------------------------------------------------------
+[example.cpp:12 | FirstTest]: Check error failed:
+Expected error 'int', no error was thrown
+----------------------------------------------------------------------
+[example.cpp:14 | FirstTest]: Check error failed:
+Expected error 'std::runtime_error', got other error:
+std::exception: Go Away!
+----------------------------------------------------------------------
+[FirstTest]: Unexpected error:
+std::exception::what(): Go Away!
+======================================================================
+1 unit failed, 3 calls failed
 ```
 
 __Contributions of all kind are welcome!__

@@ -9,6 +9,7 @@ TEST(FirstTest) {
 	EXPECT(returns0(), 0); // will succeed
 	EXPECT(returns0(), 1); // will fail
 
+	ERROR(returns0(), int); // will fail
 	ERROR(throws(), std::logic_error); // will succeed
 	ERROR(throws(), std::runtime_error); // will fail
 
