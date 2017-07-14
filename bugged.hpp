@@ -35,6 +35,7 @@
 #pragma once
 
 #include <string> // std::string
+#include <cstring> // std::strrchr
 #include <typeinfo> // std::type_traits
 #include <vector> // std::vector
 #include <iostream> // std::cout
@@ -77,12 +78,10 @@ auto printable(const T& obj) -> decltype(Printable<T>::call(obj))
 	{ return Printable<T>::call(obj); }
 
 /// Strips the path from the given filename
-auto stripPath(std::string_view view)
+const char* stripPath(const char* path)
 {
-	auto pos = view.find_last_of("/");
-	if(pos != view.npos)
-		view.remove_prefix(pos + 1);
-	return view;
+	auto pos = std::strrchr(path, '/');
+	return pos ? pos + 1 : path;
 }
 
 /// Static class that holds all test to be run.
@@ -91,7 +90,7 @@ public:
 	/// Holds all the available info for a failed test.
 	struct FailInfo {
 		int line;
-		std::string_view file;
+		const char* file;
 	};
 
 	/// Represents a unit to test.
@@ -99,6 +98,8 @@ public:
 		using FuncPtr = void(*)();
 		std::string name;
 		FuncPtr func;
+		const char* file;
+		unsigned int line;
 	};
 
 public:
@@ -111,6 +112,21 @@ public:
 
 	// The char to use in the failure separator line. Defaulted to '-'
 	static char failSeparator;
+
+	// The char to use in the bottom separator line. Defaulted to '='
+	static char bottomSeparator;
+
+	// The escape sequences to use to style the output.
+	// Will all be empty if not on unix.
+	struct Escape {
+		static const char* testName;
+		static const char* checkExpected;
+		static const char* checkActual;
+		static const char* errorExpected;
+		static const char* exception;
+		static const char* source;
+		static const char* reset;
+	};
 
 public:
 	/// Called when a check expect fails.
@@ -140,7 +156,7 @@ public:
 
 protected:
 	/// Returns a string for the given number of failed tests.
-	static inline std::string failString(unsigned int failCount, std::string_view type);
+	static inline std::string failString(unsigned int failCount, const char* type);
 
 	/// Prints the error for an unexpected exception
 	static inline void unexpectedException(const std::string& errorString);
@@ -148,7 +164,8 @@ protected:
 	static std::vector<Unit> units;
 	static unsigned int currentFailed;
 	static unsigned int totalFailed;
-	static const char* currentTest;
+	static unsigned int unitsFailed;
+	static Unit* currentUnit;
 };
 
 } // namespace bugged
@@ -157,19 +174,20 @@ protected:
 /// ``` TEST(SampleTest) { EXPECT(1 + 1, 2); } ```
 #define TEST(name) \
 	static void BUGGED_##name##_U(); \
-	namespace { static auto BUGGED_##name = bugged::Testing::add({#name, BUGGED_##name##_U}); } \
+	namespace { static auto BUGGED_##name = ::bugged::Testing::add({#name, BUGGED_##name##_U, \
+		::bugged::stripPath(__FILE__), __LINE__}); } \
 	static void BUGGED_##name##_U()
 
 /// Expects the two given values to be equal.
 #define EXPECT(expr, expected) \
-	{ bugged::checkExpect({__LINE__, ::bugged::stripPath(__FILE__)}, expr, expected); }
+	{ ::bugged::checkExpect({__LINE__, ::bugged::stripPath(__FILE__)}, expr, expected); }
 
 /// Expects the given expression to throw an error of the given type when
 /// evaluated.
 #define ERROR(expr, error) { \
 	std::string TEST_altMsg {}; \
-	if(!bugged::detail::ErrorTest<error>::call([&]{ expr; }, TEST_altMsg)) \
-			bugged::Testing::errorFailed({__LINE__, ::bugged::stripPath(__FILE__)}, \
+	if(!::bugged::detail::ErrorTest<error>::call([&]{ expr; }, TEST_altMsg)) \
+			::bugged::Testing::errorFailed({__LINE__, ::bugged::stripPath(__FILE__)}, \
 			 	#error, TEST_altMsg.c_str()); \
 	}
 
@@ -178,13 +196,35 @@ protected:
 
 namespace bugged {
 
-unsigned int Testing::separationWidth = 70;
+unsigned int Testing::separationWidth = 55;
 char Testing::failSeparator = '-';
+char Testing::bottomSeparator = '=';
+
+#if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
+	const char* Testing::Escape::testName = "\033[33m";
+	const char* Testing::Escape::checkExpected = "\033[32m";
+	const char* Testing::Escape::checkActual = "\033[31m";
+	const char* Testing::Escape::errorExpected = "\033[32m";
+	const char* Testing::Escape::exception = "\033[31m";
+	const char* Testing::Escape::source = "\033[36m";
+	const char* Testing::Escape::reset = "\033[0m";
+#else
+	const char* Testing::Escape::testName {};
+	const char* Testing::Escape::checkExpected {};
+	const char* Testing::Escape::checkActual {};
+	const char* Testing::Escape::errorExpected {};
+	const char* Testing::Escape::exception {};
+	const char* Testing::Escape::file {};
+	const char* Testing::Escape::line {};
+	const char* Testing::Escape::reset {};
+#endif
+
 
 std::vector<Testing::Unit> Testing::units {};
 unsigned int Testing::currentFailed {};
 unsigned int Testing::totalFailed {};
-const char* Testing::currentTest {};
+unsigned int Testing::unitsFailed {};
+Testing::Unit* Testing::currentUnit {};
 std::ostream* Testing::output = &std::cout;
 
 // Utility method used by EXPECT to assure the given expressions are evaluated
@@ -198,7 +238,7 @@ void checkExpect(const Testing::FailInfo& info, const V& value, const E& expecte
 
 void Testing::separationLine(bool beginning)
 {
-	if(beginning && !totalFailed && !currentFailed)
+	if(beginning && !totalFailed && !currentFailed && !unitsFailed)
 		return;
 
 	for(auto i = 0u; i < separationWidth; ++i)
@@ -212,9 +252,12 @@ void Testing::expectFailed(const FailInfo& info, const V& value, const E& expect
 {
 	separationLine(true);
 
-	std::cout << "[" << info.file << ":" << info.line << " | "
-	          << currentTest << "]: Check expect failed:\n"
-		      << "Expected '" << printable(expected) << "', got '" << printable(value) << "'\n";
+	std::cout << "[" << Escape::source << info.file << ":" << info.line
+			  << Escape::reset << " | " << Escape::testName << currentUnit->name
+	  		  << Escape::reset << "] Check expect failed:\nGot: '"
+		 	  << Escape::checkActual << printable(value)
+			  << Escape::reset << "' instead of '" << Escape::checkExpected << printable(expected)
+			  << Escape::reset << "'\n";
 
 	++currentFailed;
 }
@@ -223,19 +266,31 @@ void Testing::errorFailed(const FailInfo& info, const char* error, const std::st
 {
 	separationLine(true);
 
-	std::cout << "[" << info.file << ":" << info.line << " | "
-	          << currentTest << "]: Check error failed:\n"
-		      << "Expected error '" << error << "', ";
+	std::cout << "[" << Escape::source << info.file << ":" << info.line
+			  << Escape::reset << " | " << Escape::testName << currentUnit->name
+			  << Escape::reset << "] Check error failed:\n"
+		 	  << "Expected '" << Escape::errorExpected << error << Escape::reset << "', ";
 
 	if(!other.empty()) {
-		std::cout << "got other error: \n";
-		std::cout << "    " << other << "\n";
+		std::cout << "got other error: \n"
+			 	  << Escape::exception << other << Escape::reset << "\n";
 	} else {
 		std::cout << "no error was thrown\n";
 	}
 
 	++currentFailed;
 }
+
+void Testing::unexpectedException(const std::string& errorString)
+{
+	separationLine(true);
+
+	std::cout << "[" << Escape::source << currentUnit->file << ":" << currentUnit->line
+			  << Escape::reset << " | " << Escape::testName << currentUnit->name
+			  << Escape::reset << "] Unexpected exception:\n"
+	  		  << Escape::exception << errorString << Escape::reset << "\n";
+}
+
 
 namespace detail {
 
@@ -288,11 +343,10 @@ int Testing::add(const Unit& unit)
 
 unsigned int Testing::run()
 {
-	auto unitsFailed = 0u;
 	for(auto unit : units) {
 		currentFailed = 0;
 
-		currentTest = unit.name.c_str();
+		currentUnit = &unit;
 		auto thrown = false;
 
 		try {
@@ -312,7 +366,7 @@ unsigned int Testing::run()
 
 	if(totalFailed) {
 		for(auto i = 0u; i < separationWidth; ++i)
-			*output << '=';
+			*output << bottomSeparator;
 		*output << "\n";
 	}
 
@@ -321,7 +375,7 @@ unsigned int Testing::run()
 	return unitsFailed;
 }
 
-std::string Testing::failString(unsigned int failCount, std::string_view type)
+std::string Testing::failString(unsigned int failCount, const char* type)
 {
 	if(failCount == 0) {
 		return std::string("All ").append(type).append("s succeeded");
@@ -330,14 +384,6 @@ std::string Testing::failString(unsigned int failCount, std::string_view type)
 	} else {
 		return std::to_string(failCount).append(" ").append(type).append("s failed");
 	}
-}
-
-void Testing::unexpectedException(const std::string& errorString)
-{
-	separationLine(true);
-
-	std::cout << "[" << currentTest << "]: " << "Unexpected error: \n"
-		   	  << "    " << errorString << "\n";
 }
 
 } // namespace bugged
