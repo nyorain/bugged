@@ -1,5 +1,5 @@
-Are you bugged?
-===============
+Bugged
+======
 
 Your code is bugged? Your functions try hard to fight their interfaces and documentation?
 Your exceptions multiply at the rate of rabbits and you are lost in all of it? <br>
