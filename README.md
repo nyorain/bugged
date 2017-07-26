@@ -46,22 +46,6 @@ TEST(EmptyTest) {}
 ```
 
 The output of the test above could look like this:
-
-```
-[example.cpp:10 | FirstTest] Check expect failed:
-Got: '0' instead of '1'
--------------------------------------------------------
-[example.cpp:12 | FirstTest] Check error failed:
-Expected 'int', no error was thrown
--------------------------------------------------------
-[example.cpp:14 | FirstTest] Check error failed:
-Expected 'std::runtime_error', got other error:
-std::exception: Go Away!
--------------------------------------------------------
-[example.cpp:8 | FirstTest] Unexpected exception:
-std::exception: Go Away!
-=======================================================
-1 unit failed, 3 calls failed
-```
+![Wrong image path, report this as issue please](bugged.png)
 
 __Contributions of all kind are welcome!__
