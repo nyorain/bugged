@@ -174,8 +174,8 @@ protected:
 /// ``` TEST(SampleTest) { EXPECT(1 + 1, 2); } ```
 #define TEST(name) \
 	static void BUGGED_##name##_U(); \
-	namespace { static auto BUGGED_##name = ::bugged::Testing::add({#name, BUGGED_##name##_U, \
-		::bugged::stripPath(__FILE__), __LINE__}); } \
+	namespace { static const auto BUGGED_##name = ::bugged::Testing::add({#name, \
+		BUGGED_##name##_U, ::bugged::stripPath(__FILE__), __LINE__}); } \
 	static void BUGGED_##name##_U()
 
 /// Expects the two given values to be equal.
