@@ -27,10 +27,11 @@
 // For issues and (appreciated) help, see https://github.com/nyorain/bugged.
 // For more information and usage, see example.cpp or README.md
 // Extremely lightweight header-only unit testing for C++.
-// Use the TEST(name), EXPECT(expression, expected) and ERROR(expression, error) macros.
-// Configuration useful for inline testing (define before including the file):
-//  - BUGGED_NO_MAIN: don't include the main function that just executes all tests.
-//  - BUGGED_NO_IMPL: don't include the implementation.
+// Use the TEST(name), EXPECT(expression, expected) and
+// ERROR(expression, error) macros.
+//
+// Define config macros before including the file.
+//  - BUGGED_NO_MAIN: don't include the main func that just executes all tests.
 
 #pragma once
 
@@ -45,10 +46,8 @@
 namespace bugged {
 
 // Utility
-namespace {
-	template<typename... T> constexpr void unused(T&&...) {}
-	template<typename... T> using void_t = void;
-}
+template<typename... T> constexpr void unused(T&&...) {}
+template<typename... T> using void_t = void;
 
 /// Class used for printing objects to the debug output.
 /// Provided implementations just return the object when it is printable
@@ -58,28 +57,31 @@ namespace {
 /// \tparam T The type of objects to print.
 template<typename T, typename C = void>
 struct Printable {
-	static std::string call(const T&)
-	{
-		static auto txt = std::string("<not printable : ") + typeid(T).name() + std::string(">");
+	static std::string call(const T&) {
+		static auto txt = std::string("<not printable : ") +
+			typeid(T).name() + std::string(">");
 		return txt;
 	}
 };
 
 /// Default printable specialization for types that can itself
+template<typename T> using OstreamPrintableT =
+	decltype(std::declval<std::ostream&>() << std::declval<T>());
+
 template<typename T>
-struct Printable<T, void_t<decltype(std::declval<std::ostream&>() << std::declval<T>())>> {
+struct Printable<T, void_t<OstreamPrintableT<T>>> {
 	static const T& call(const T& obj) { return obj; }
 };
 
 /// Uses the Printable template to retrieve something printable to an ostream
 /// from the given object.
 template<typename T>
-auto printable(const T& obj) -> decltype(Printable<T>::call(obj))
-	{ return Printable<T>::call(obj); }
+auto printable(const T& obj) -> decltype(Printable<T>::call(obj)) {
+	return Printable<T>::call(obj);
+}
 
 /// Strips the path from the given filename
-const char* stripPath(const char* path)
-{
+const char* stripPath(const char* path) {
 	auto pos = std::strrchr(path, '/');
 	return pos ? pos + 1 : path;
 }
@@ -104,7 +106,7 @@ public:
 
 public:
 	// Config variables
-	// the ostream to output to. Must not be set to nullptr. Defaulted to std::cout
+	// the ostream to output to. Must not be nullptr, &std::cout by default.
 	static std::ostream* output;
 
 	// The width of the failure separator. Defaulted to 70.
@@ -134,14 +136,16 @@ public:
 	/// the given information.
 	/// Should be only called inside of a testing unit.
 	template<typename V, typename E>
-	static inline void expectFailed(const FailInfo&, const V& value, const E& expected);
+	static inline void expectFailed(const FailInfo&,
+		const V& value, const E& expected);
 
 	/// Called when a check error fails.
 	/// Should be only called inside of a testing unit.
 	/// \param error The name of the expected error type
-	/// \param other empty if there was no other error, the type and message of the
-	/// other error thrown otherwise.
-	static inline void errorFailed(const FailInfo&, const char* error, const std::string& other);
+	/// \param other empty if there was no other error, the type and
+	/// message of the other error thrown otherwise.
+	static inline void errorFailed(const FailInfo&,
+		const char* error, const std::string& other);
 
 	/// Adds the given unit to the list of units to test.
 	/// Always returns 0, useful for static calling.
@@ -156,7 +160,7 @@ public:
 
 protected:
 	/// Returns a string for the given number of failed tests.
-	static inline std::string failString(unsigned int failCount, const char* type);
+	static inline std::string failString(unsigned int count, const char* type);
 
 	/// Prints the error for an unexpected exception
 	static inline void unexpectedException(const std::string& errorString);
@@ -174,26 +178,27 @@ protected:
 /// ``` TEST(SampleTest) { EXPECT(1 + 1, 2); } ```
 #define TEST(name) \
 	static void BUGGED_##name##_U(); \
-	namespace { static const auto BUGGED_##name = ::bugged::Testing::add({#name, \
-		BUGGED_##name##_U, ::bugged::stripPath(__FILE__), __LINE__}); } \
+	namespace {  \
+		static const auto BUGGED_##name =  \
+			::bugged::Testing::add({#name, BUGGED_##name##_U,  \
+			::bugged::stripPath(__FILE__), __LINE__});  \
+	} \
 	static void BUGGED_##name##_U()
 
 /// Expects the two given values to be equal.
-#define EXPECT(expr, expected) \
-	{ ::bugged::checkExpect({__LINE__, ::bugged::stripPath(__FILE__)}, expr, expected); }
+#define EXPECT(expr, expected) { ::bugged::checkExpect({__LINE__,  \
+	::bugged::stripPath(__FILE__)}, expr, expected); }
 
 /// Expects the given expression to throw an error of the given type when
 /// evaluated.
 #define ERROR(expr, error) { \
 	std::string TEST_altMsg {}; \
 	if(!::bugged::detail::ErrorTest<error>::call([&]{ expr; }, TEST_altMsg)) \
-			::bugged::Testing::errorFailed({__LINE__, ::bugged::stripPath(__FILE__)}, \
-			 	#error, TEST_altMsg.c_str()); \
+		::bugged::Testing::errorFailed({__LINE__, \
+			::bugged::stripPath(__FILE__)}, #error, TEST_altMsg.c_str()); \
 	}
 
 // Implementation
-#ifndef BUGGED_NO_IMPL
-
 namespace bugged {
 
 unsigned int Testing::separationWidth = 55;
@@ -229,46 +234,52 @@ std::ostream* Testing::output = &std::cout;
 // Utility method used by EXPECT to assure the given expressions are evaluated
 // exactly once
 template<typename V, typename E>
-void checkExpect(const Testing::FailInfo& info, const V& value, const E& expected)
+void checkExpect(const Testing::FailInfo& info, const V& v, const E& expected)
 {
-	if(value != expected)
-		Testing::expectFailed(info, value, expected);
+	if(v != expected) {
+		Testing::expectFailed(info, v, expected);
+	}
 }
 
 void Testing::separationLine(bool beginning)
 {
-	if(beginning && !totalFailed && !currentFailed && !unitsFailed)
+	if(beginning && !totalFailed && !currentFailed && !unitsFailed) {
 		return;
+	}
 
-	for(auto i = 0u; i < separationWidth; ++i)
+	for(auto i = 0u; i < separationWidth; ++i) {
 		std::cout << failSeparator;
+	}
 
 	std::cout << "\n";
 }
 
 template<typename V, typename E>
-void Testing::expectFailed(const FailInfo& info, const V& value, const E& expected)
+void Testing::expectFailed(const FailInfo& info, const V& v, const E& expected)
 {
 	separationLine(true);
 
 	std::cout << "[" << Escape::source << info.file << ":" << info.line
 			  << Escape::reset << " | " << Escape::testName << currentUnit->name
 	  		  << Escape::reset << "] Check expect failed:\nGot: '"
-		 	  << Escape::checkActual << printable(value)
-			  << Escape::reset << "' instead of '" << Escape::checkExpected << printable(expected)
+		 	  << Escape::checkActual << printable(v)
+			  << Escape::reset << "' instead of '" << Escape::checkExpected
+			  << printable(expected)
 			  << Escape::reset << "'\n";
 
 	++currentFailed;
 }
 
-void Testing::errorFailed(const FailInfo& info, const char* error, const std::string& other)
+void Testing::errorFailed(const FailInfo& info, const char* error,
+	const std::string& other)
 {
 	separationLine(true);
 
 	std::cout << "[" << Escape::source << info.file << ":" << info.line
 			  << Escape::reset << " | " << Escape::testName << currentUnit->name
 			  << Escape::reset << "] Check error failed:\n"
-		 	  << "Expected '" << Escape::errorExpected << error << Escape::reset << "', ";
+		 	  << "Expected '" << Escape::errorExpected << error
+			  << Escape::reset << "', ";
 
 	if(!other.empty()) {
 		std::cout << "got other error: \n"
@@ -284,8 +295,9 @@ void Testing::unexpectedException(const std::string& errorString)
 {
 	separationLine(true);
 
-	std::cout << "[" << Escape::source << currentUnit->file << ":" << currentUnit->line
-			  << Escape::reset << " | " << Escape::testName << currentUnit->name
+	auto& cu = *currentUnit;
+	std::cout << "[" << Escape::source << cu.file << ":" << cu.line
+			  << Escape::reset << " | " << Escape::testName << cu.name
 			  << Escape::reset << "] Unexpected exception:\n"
 	  		  << Escape::exception << errorString << Escape::reset << "\n";
 }
@@ -350,9 +362,9 @@ unsigned int Testing::run()
 
 		try {
 			unit.func();
-		} catch(const std::exception& exception) {
+		} catch(const std::exception& exc) {
 			thrown = true;
-			unexpectedException(std::string("std::exception: ") + exception.what());
+			unexpectedException(std::string("std::exception: ") + exc.what());
 		} catch(...) {
 			thrown = true;
 			unexpectedException("<Not a std::exception object>");
@@ -381,13 +393,14 @@ std::string Testing::failString(unsigned int failCount, const char* type)
 	} else if(failCount == 1) {
 		return std::string("1 ").append(type).append(" failed");
 	} else {
-		return std::to_string(failCount).append(" ").append(type).append("s failed");
+		return std::to_string(failCount)
+			.append(" ")
+			.append(type)
+			.append("s failed");
 	}
 }
 
 } // namespace bugged
-
-#endif // BUGGED_NO_IMPL
 
 // Main function
 #ifndef BUGGED_NO_MAIN
