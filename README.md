@@ -5,7 +5,7 @@ Your code is bugged? Your functions try hard to fight their interfaces and docum
 Your exceptions multiply at the rate of rabbits and you are lost in all of it? <br>
 __Good news! You don't need a >20k-loc framework to fight back!__
 
-Just a single header for modern C++ unit testing. <br>
+Just a [single header](include/bugged.hpp) for modern C++ unit testing. <br>
 Released into the public domain to spare you from any additional license headaches. <br>
 Does not perform any macro and template magic that itself provides a nice habitat for those
 little beasts. Does only what it has to. And this well.
@@ -46,6 +46,6 @@ TEST(EmptyTest) {}
 ```
 
 The output of the test above could look like this:
-![Wrong image path, report this as issue please](bugged.png)
+![Here should go a beautiful picture of bugged in action. So sad!](bugged.png)
 
 __Contributions of all kind are welcome!__
